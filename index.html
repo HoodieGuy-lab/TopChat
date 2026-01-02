@@ -135,6 +135,12 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
 
+    /* header toolbar */
+    #header-toolbar { display:flex; gap:12px; align-items:center; margin-left:auto; }
+    #search-box { padding:8px 12px; border-radius:12px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); width:220px }
+    #compact-toggle { padding:8px 12px; border-radius:10px; background:transparent; border:1px solid var(--border); color:var(--text-secondary); cursor:pointer }
+    #typing-indicator { font-size:0.9rem; color:var(--text-secondary); margin-left:8px }
+
     #channels-toggle {
       display: none;
       width: 48px;
@@ -283,20 +289,18 @@
 
     .message-group {
       display: flex;
-      flex-direction: column;
-      gap: 4px;
-      max-width: 70%;
+      gap: 8px;
+      max-width: 72%;
+      align-items: flex-end;
     }
 
-    .message-group.own {
-      align-self: flex-end;
-    }
+    .message-group.own { align-self:flex-end; flex-direction:row-reverse }
 
     .sender {
-      font-size: 0.85rem;
-      font-weight: 600;
+      font-size: 0.78rem;
+      font-weight: 700;
       color: var(--accent-primary);
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
 
     .message-group.own .sender {
@@ -304,12 +308,14 @@
     }
 
     .bubble {
-      padding: 12px 18px;
-      border-radius: 18px;
+      padding: 10px 14px;
+      border-radius: 14px;
       word-wrap: break-word;
-      line-height: 1.5;
+      line-height: 1.35;
       position: relative;
-      animation: fadeIn 0.3s ease-out;
+      animation: fadeIn 0.22s ease-out;
+      font-size: 0.92rem;
+      box-shadow: 0 6px 18px rgba(2,6,23,0.35);
     }
 
     .bubble:first-child {
@@ -356,6 +362,25 @@
       margin-top: 6px;
       opacity: 0.8;
     }
+
+    /* avatar */
+    .avatar { width:36px; height:36px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:700; color:#0d1117; flex-shrink:0 }
+    .message-row { display:flex; gap:10px; align-items:flex-end }
+    .message-body { display:flex; flex-direction:column; gap:6px }
+
+    /* reactions */
+    .reactions { display:flex; gap:6px; margin-top:6px }
+    .reaction { background:rgba(255,255,255,0.06); padding:4px 8px; border-radius:999px; font-size:0.85rem; cursor:pointer; border:1px solid rgba(255,255,255,0.03) }
+
+    /* compact mode */
+    #messages.compact .sender { display:none }
+    #messages.compact .message-group { gap:6px }
+    #messages.compact .bubble { padding:8px 12px; font-size:0.88rem }
+
+    /* message hover actions */
+    .msg-actions { display:none; gap:8px; position:absolute; right:8px; top:6px }
+    .bubble:hover + .msg-actions, .bubble:hover .msg-actions { display:flex }
+    .msg-action { font-size:0.9rem; cursor:pointer; color:var(--text-secondary) }
 
     .message-group.own .time {
       color: rgba(13,17,23,0.8);
@@ -500,6 +525,11 @@
     <div id="app-header">
       <button id="channels-toggle">☰</button>
       <div style="flex:1; text-align:center; margin-right:48px;">Encrypted Vault</div>
+      <div id="header-toolbar">
+        <input id="search-box" placeholder="Search messages..." />
+        <button id="compact-toggle">Compact</button>
+        <div id="typing-indicator"></div>
+      </div>
     </div>
     <div id="channels-overlay" class="hidden"></div>
     <div id="main">
@@ -546,6 +576,9 @@
     const channelTitle = document.getElementById('current-channel');
     const channelList = document.getElementById('channel-list');
     const input = document.getElementById('message-input');
+    const searchBox = document.getElementById('search-box');
+    const compactToggle = document.getElementById('compact-toggle');
+    const typingIndicator = document.getElementById('typing-indicator');
 
     // Mobile sidebar
     document.getElementById('channels-toggle').addEventListener('click', () => {
@@ -579,7 +612,14 @@
       channels.forEach(ch => {
         const li = document.createElement('li');
         li.textContent = ch;
+        const unread = Number(localStorage.getItem(`unread_${ch}`) || 0);
+        if (unread) {
+          const badge = document.createElement('span'); badge.style.position='absolute'; badge.style.right='12px'; badge.style.top='12px'; badge.style.background='var(--accent-secondary)'; badge.style.color='#071018'; badge.style.padding='4px 8px'; badge.style.borderRadius='999px'; badge.style.fontSize='0.75rem'; badge.textContent = unread>99? '99+': unread;
+          li.style.position='relative'; li.appendChild(badge);
+        }
         li.onclick = () => {
+          localStorage.setItem(`unread_${ch}`, '0');
+          renderChannels(loadChannels());
           switchChannel(ch);
           if (window.innerWidth <= 768) {
             document.getElementById('channels').classList.remove('open');
@@ -627,56 +667,204 @@
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
+    // Helpers: message id, reactions, avatars, search, typing indicator, actions
+    function getMessageId(row) {
+      if (row.id) return String(row.id);
+      return encodeURIComponent(`${row.created_at||Date.now()}_${row.user_name||'anon'}_${(row.content||'').slice(0,40)}`);
+    }
+
+    function loadReactions(msgId) {
+      try { return JSON.parse(localStorage.getItem(`reactions_${msgId}`)) || {}; } catch { return {}; }
+    }
+    function saveReactions(msgId, obj) { localStorage.setItem(`reactions_${msgId}`, JSON.stringify(obj)); }
+    function toggleReaction(msgId, emoji) {
+      if (!username) return alert('Set a codename first');
+      const r = loadReactions(msgId);
+      const arr = r[emoji] || [];
+      const idx = arr.indexOf(username);
+      if (idx === -1) arr.push(username); else arr.splice(idx,1);
+      if (arr.length) r[emoji]=arr; else delete r[emoji];
+      saveReactions(msgId, r);
+      const node = document.querySelector(`[data-msgid="${msgId}"]`);
+      if (node) renderReactions(node, msgId);
+    }
+
+    function renderReactions(container, msgId) {
+      let reactions = loadReactions(msgId);
+      let list = container.querySelector('.reactions');
+      if (!list) { list = document.createElement('div'); list.className='reactions'; container.querySelector('.message-body').appendChild(list); }
+      list.innerHTML = '';
+      Object.keys(reactions).forEach(emoji => {
+        const btn = document.createElement('div');
+        btn.className = 'reaction';
+        btn.textContent = `${emoji} ${reactions[emoji].length || ''}`.trim();
+        btn.onclick = () => toggleReaction(msgId, emoji);
+        list.appendChild(btn);
+      });
+      const add = document.createElement('div'); add.className='reaction'; add.textContent='+';
+      add.onclick = (e) => {
+        const picker = ['👍','❤️','😂','🔥','🎉','👀'];
+        const menu = document.createElement('div'); menu.style.position='fixed'; menu.style.background='var(--bg-secondary)'; menu.style.border='1px solid var(--border)'; menu.style.padding='6px'; menu.style.display='flex'; menu.style.gap='6px';
+        picker.forEach(em=>{ const el=document.createElement('div'); el.textContent=em; el.style.cursor='pointer'; el.onclick=()=>{ toggleReaction(msgId, em); try{ document.body.removeChild(menu) }catch{} }; menu.appendChild(el); });
+        menu.style.left=(e.clientX)+'px'; menu.style.top=(e.clientY)+'px'; document.body.appendChild(menu);
+        const cleaner = ()=>{ try{ document.body.removeChild(menu) }catch{}; document.removeEventListener('click', cleaner); };
+        setTimeout(()=>document.addEventListener('click', cleaner), 10);
+      };
+      list.appendChild(add);
+    }
+
+    function initialsFor(name){ if(!name) return 'A'; return name.split(' ').map(s=>s[0]||'').slice(0,2).join('').toUpperCase(); }
+
+    function filterMessages(term){ term = (term||'').toLowerCase(); [...messagesDiv.children].forEach(ch => { const text = ch.textContent.toLowerCase(); ch.style.display = term ? (text.includes(term) ? 'flex' : 'none') : 'flex'; }); }
+
+    compactToggle.onclick = () => { messagesDiv.classList.toggle('compact'); compactToggle.textContent = messagesDiv.classList.contains('compact') ? 'Cozy' : 'Compact'; };
+    searchBox.addEventListener('input', e => filterMessages(e.target.value));
+
+    // typing indicator using localStorage heartbeat
+    input.addEventListener('input', () => {
+      input.style.height = 'auto';
+      input.style.height = input.scrollHeight + 'px';
+      if (!username) return;
+      localStorage.setItem(`typing_${currentChannel}_${username}`, Date.now());
+    });
+
+    setInterval(() => {
+      const now = Date.now();
+      const keys = Object.keys(localStorage).filter(k => k.startsWith(`typing_${currentChannel}_`));
+      const names = [];
+      keys.forEach(k=>{
+        const ts = Number(localStorage.getItem(k));
+        if (now - ts < 6000) {
+          const parts = k.split('_'); const nm = parts.slice(2).join('_'); if (nm !== username) names.push(nm);
+        } else {
+          try { localStorage.removeItem(k); } catch {}
+        }
+      });
+      typingIndicator.textContent = names.length ? `${names.slice(0,3).join(', ')} typing…` : '';
+    }, 1500);
+
+    // Replace renderer with richer layout: avatar, body, reactions, actions
     function renderMessageFromDB(row) {
+      const msgId = getMessageId(row);
       const isOwn = row.user_name === username;
       const sameAsLast = lastSender === row.user_name && !isOwn;
 
       const group = document.createElement('div');
       group.className = `message-group ${isOwn ? 'own' : ''}`;
+      group.dataset.msgid = msgId;
 
+      const rowWrap = document.createElement('div'); rowWrap.className='message-row';
+      const avatar = document.createElement('div'); avatar.className='avatar'; avatar.textContent = initialsFor(row.user_name); avatar.style.background = stringToColor(row.user_name||'anon');
+      rowWrap.appendChild(avatar);
+
+      const body = document.createElement('div'); body.className='message-body';
       if (!isOwn && !sameAsLast) {
-        const sender = document.createElement('div');
-        sender.className = 'sender';
-        sender.textContent = row.user_name;
-        sender.style.color = stringToColor(row.user_name);
-        group.appendChild(sender);
+        const sender = document.createElement('div'); sender.className = 'sender'; sender.textContent = row.user_name; sender.style.color = stringToColor(row.user_name); body.appendChild(sender);
       }
 
-      const bubble = document.createElement('div');
-      bubble.className = 'bubble';
-
+      const bubble = document.createElement('div'); bubble.className = 'bubble';
       if (row.type === 'text') {
         bubble.textContent = row.content;
       } else if (row.media_url) {
         let media;
         if (row.type === 'image') {
-          media = document.createElement('img');
-          media.src = row.media_url;
+          media = document.createElement('img'); media.src = row.media_url;
         } else if (row.type === 'video') {
-          media = document.createElement('video');
-          media.controls = true;
-          media.src = row.media_url;
+          media = document.createElement('video'); media.controls = true; media.src = row.media_url;
         } else {
-          media = document.createElement('a');
-          media.href = row.media_url;
-          media.target = '_blank';
-          media.textContent = row.media_name || 'File';
-          media.style.color = 'var(--accent-primary)';
+          media = document.createElement('a'); media.href = row.media_url; media.target = '_blank'; media.textContent = row.media_name || 'File'; media.style.color = 'var(--accent-primary)';
         }
-        media.className = 'media';
-        bubble.appendChild(media);
+        media.className = 'media'; bubble.appendChild(media);
       }
 
-      const time = document.createElement('div');
-      time.className = 'time';
-      time.textContent = new Date(row.created_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-
+      const time = document.createElement('div'); time.className = 'time'; time.textContent = new Date(row.created_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
       bubble.appendChild(time);
-      group.appendChild(bubble);
+      body.appendChild(bubble);
+
+      rowWrap.appendChild(body);
+      group.appendChild(rowWrap);
+
+      // message actions
+      const actions = document.createElement('div'); actions.className='msg-actions';
+      const copy = document.createElement('div'); copy.className='msg-action'; copy.textContent='Copy'; copy.onclick = ()=>{ navigator.clipboard && navigator.clipboard.writeText(row.content||''); };
+      const quote = document.createElement('div'); quote.className='msg-action'; quote.textContent='Quote'; quote.onclick = ()=>{ input.value = `> ${row.content || row.media_name || ''}\n`; input.focus(); };
+      actions.appendChild(copy); actions.appendChild(quote);
+
+      // delete (only for your own messages)
+      if (isOwn) {
+        const del = document.createElement('div'); del.className='msg-action'; del.style.color='#ff7b8a'; del.textContent='Delete';
+        del.onclick = async () => {
+          if (!confirm('Delete this message?')) return;
+          // try server delete if we have an id
+          try {
+            if (row.id) {
+              const { error } = await supabase.from('messages').delete().eq('id', row.id);
+              if (error) { alert('Delete failed'); console.error(error); return; }
+            } else {
+              // fallback: remove from cached messages only
+              const cached = loadCachedMessages(currentChannel).filter(m => {
+                if (m.id && row.id) return m.id !== row.id;
+                return !(m.created_at === row.created_at && m.user_name === row.user_name && (m.content||'') === (row.content||''));
+              });
+              saveCachedMessages(currentChannel, cached);
+            }
+            // remove DOM node
+            try { group.remove(); } catch(e) {}
+            // remove reactions stored locally
+            try { localStorage.removeItem(`reactions_${getMessageId(row)}`); } catch(e){}
+          } catch (e) { console.error('delete error', e); alert('Delete failed'); }
+        };
+        actions.appendChild(del);
+      }
+      group.appendChild(actions);
+
       messagesDiv.appendChild(group);
+
+      renderReactions(group, msgId);
 
       lastSender = row.user_name;
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function setupGlobalUnreadSub(){
+      try{
+        supabase.channel('public-unread')
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+            const m = payload.new;
+            if (!m) return;
+            if (m.user_name === username) return;
+            if (m.channel === currentChannel) return;
+            const key = `unread_${m.channel}`;
+            const val = Number(localStorage.getItem(key) || 0) + 1;
+            localStorage.setItem(key, String(val));
+            renderChannels(loadChannels());
+          })
+          .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, payload => {
+            const old = payload.old;
+            if (!old) return;
+            // compute message id used in DOM/caches
+            const msgId = old.id ? String(old.id) : getMessageId(old);
+            // remove from DOM if present
+            try {
+              const node = document.querySelector(`[data-msgid="${msgId}"]`);
+              if (node) node.remove();
+            } catch(e) {}
+            // remove from cached messages for all channels
+            try {
+              const channels = loadChannels();
+              channels.forEach(ch => {
+                const cached = loadCachedMessages(ch).filter(m => {
+                  if (old.id && m.id) return m.id !== old.id;
+                  return !(m.created_at === old.created_at && m.user_name === old.user_name && (m.content||'') === (old.content||''));
+                });
+                saveCachedMessages(ch, cached);
+              });
+            } catch(e) {}
+            // clean local reactions
+            try { localStorage.removeItem(`reactions_${msgId}`); } catch(e) {}
+          })
+          .subscribe();
+      }catch(e){ console.warn('unread sub failed', e); }
     }
 
     async function switchChannel(ch) {
@@ -687,6 +875,8 @@
       const activeLi = [...channelList.children].find(li => li.textContent === ch);
       if (activeLi) activeLi.classList.add('active');
 
+      // clear unread marker for this channel
+      localStorage.setItem(`unread_${ch}`, '0');
       await loadHistory(ch);
       input.placeholder = `Message #${ch}`;
 
@@ -740,6 +930,7 @@
           appDiv.classList.remove('hidden');
           renderChannels(loadChannels());
           switchChannel('general');
+          try { setupGlobalUnreadSub(); } catch(e){}
         } else {
           usernamePrompt.classList.remove('hidden');
         }
@@ -757,6 +948,7 @@
         appDiv.classList.remove('hidden');
         renderChannels(loadChannels());
         switchChannel('general');
+        try { setupGlobalUnreadSub(); } catch(e){}
       }
     };
 
