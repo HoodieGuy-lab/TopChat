@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Top Secret Vault</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+  </script>
+  <style>
+    :root {
+      --bg-primary: #0d1117;
+      --bg-secondary: #161b22;
+      --bg-tertiary: #21262d;
+      --accent-primary: #58a6ff;
+      --accent-secondary: #39d353;
+      --text-primary: #f0f6fc;
+      --text-secondary: #8b949e;
+      --text-muted: #484f58;
+      --border: #30363d;
+      --bubble-own: linear-gradient(135deg, #58a6ff, #39d353);
+      --bubble-other: #21262d;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+    }
+
+    #access, #username-prompt, #app {
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #access, #username-prompt {
+      justify-content: center;
+      align-items: center;
+      background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+      text-align: center;
+      padding: 2rem;
+    }
+
+    #access h1, #username-prompt h1 {
+      font-size: 3.5rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 1rem;
+      letter-spacing: -1px;
+    }
+
+    #access p, #username-prompt p {
+      font-size: 1.2rem;
+      color: var(--text-secondary);
+      margin-bottom: 2.5rem;
+      max-width: 480px;
+    }
+
+    input[type="password"], input[type="text"] {
+      width: 420px;
+      max-width: 90%;
+      padding: 16px 20px;
+      background: var(--bg-secondary);
+      border: 2px solid var(--border);
+      border-radius: 16px;
+      color: var(--text-primary);
+      font-size: 1.1rem;
+      transition: all 0.3s ease;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 4px rgba(88, 166, 255, 0.15);
+      transform: translateY(-2px);
+    }
+
+    input::placeholder {
+      color: var(--text-muted);
+    }
+
+    button.primary {
+      padding: 14px 48px;
+      background: var(--bubble-own);
+      border: none;
+      border-radius: 16px;
+      color: #0d1117;
+      font-weight: 700;
+      font-size: 1.1rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 8px 20px rgba(88, 166, 255, 0.3);
+    }
+
+    button.primary:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 16px 32px rgba(57, 211, 83, 0.4);
+    }
+
+    #error {
+      color: #f85149;
+      margin-top: 1rem;
+      font-weight: 600;
+      min-height: 1.5em;
+    }
+
+    #app-header {
+      padding: 16px 24px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--accent-primary);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: relative;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    #channels-toggle {
+      display: none;
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: rgba(88,166,255,0.1);
+      border: 1px solid rgba(88,166,255,0.2);
+      color: var(--accent-primary);
+      font-size: 1.4rem;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    #channels {
+      width: 280px;
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.25s ease;
+    }
+
+    #channels-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 40;
+    }
+
+    #channels h3 {
+      padding: 20px 20px 12px;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+    }
+
+    #channel-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    #channel-list li {
+      padding: 14px 18px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-weight: 500;
+      position: relative;
+    }
+
+    #channel-list li:hover {
+      background: rgba(88,166,255,0.15);
+      color: var(--accent-primary);
+    }
+
+    #channel-list li.active {
+      background: rgba(88,166,255,0.2);
+      color: var(--accent-primary);
+      font-weight: 600;
+    }
+
+    #channel-list li::before {
+      content: '#';
+      color: var(--accent-primary);
+      font-weight: 700;
+      margin-right: 8px;
+    }
+
+    #new-channel-area {
+      padding: 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 12px;
+    }
+
+    #new-channel {
+      flex: 1;
+      padding: 12px 16px;
+      background: var(--bg-tertiary);
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      color: var(--text-primary);
+      font-size: 0.95rem;
+    }
+
+    #new-channel:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 3px rgba(88,166,255,0.15);
+    }
+
+    #create-channel {
+      width: 48px;
+      height: 48px;
+      background: var(--bubble-own);
+      border: none;
+      border-radius: 12px;
+      color: #0d1117;
+      font-size: 1.4rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    #chat {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-primary);
+    }
+
+    #chat-header {
+      padding: 20px 28px;
+      border-bottom: 1px solid var(--border);
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--accent-primary);
+    }
+
+    #chat-header::before {
+      content: '#';
+      opacity: 0.8;
+      margin-right: 6px;
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      scroll-behavior: smooth;
+    }
+
+    .message-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-width: 70%;
+    }
+
+    .message-group.own {
+      align-self: flex-end;
+    }
+
+    .sender {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--accent-primary);
+      margin-bottom: 4px;
+    }
+
+    .message-group.own .sender {
+      display: none;
+    }
+
+    .bubble {
+      padding: 12px 18px;
+      border-radius: 18px;
+      word-wrap: break-word;
+      line-height: 1.5;
+      position: relative;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    .bubble:first-child {
+      border-top-left-radius: 18px;
+      border-top-right-radius: 18px;
+    }
+
+    .bubble:last-child {
+      border-bottom-left-radius: 18px;
+      border-bottom-right-radius: 18px;
+    }
+
+    .message-group:not(.own) .bubble:first-child {
+      border-top-left-radius: 6px;
+    }
+
+    .message-group.own .bubble:first-child {
+      border-top-right-radius: 6px;
+    }
+
+    .message-group:not(.own) .bubble:last-child {
+      border-bottom-left-radius: 18px;
+    }
+
+    .message-group.own .bubble:last-child {
+      border-bottom-right-radius: 18px;
+    }
+
+    .message-group:not(.own) .bubble {
+      background: var(--bubble-other);
+      border: 1px solid var(--border);
+    }
+
+    .message-group.own .bubble {
+      background: var(--bubble-own);
+      color: #0d1117;
+      font-weight: 500;
+    }
+
+    .time {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      align-self: flex-end;
+      margin-top: 6px;
+      opacity: 0.8;
+    }
+
+    .message-group.own .time {
+      color: rgba(13,17,23,0.8);
+    }
+
+    .media {
+      max-width: 420px;
+      border-radius: 16px;
+      margin-top: 8px;
+      display: block;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+
+    img.media {
+      width: 100%;
+    }
+
+    video.media {
+      width: 100%;
+      background: #000;
+    }
+
+    #input-area {
+      padding: 20px 28px;
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 16px;
+      align-items: flex-end;
+    }
+
+    #message-input {
+      flex: 1;
+      min-height: 52px;
+      max-height: 120px;
+      padding: 14px 20px;
+      background: var(--bg-tertiary);
+      border: 2px solid var(--border);
+      border-radius: 20px;
+      color: var(--text-primary);
+      font-size: 1rem;
+      resize: none;
+      overflow-y: auto;
+    }
+
+    #message-input:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 4px rgba(88,166,255,0.15);
+    }
+
+    #file-btn, #send-btn {
+      width: 52px;
+      height: 52px;
+      border-radius: 16px;
+      border: none;
+      cursor: pointer;
+      font-size: 1.4rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.2s ease;
+    }
+
+    #file-btn {
+      background: #f78166;
+      color: white;
+    }
+
+    #send-btn {
+      background: var(--bubble-own);
+      color: #0d1117;
+    }
+
+    #file-btn:hover, #send-btn:hover {
+      transform: scale(1.1);
+    }
+
+    .hidden { display: none !important; }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(88,166,255,0.3);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(88,166,255,0.5);
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 768px) {
+      #channels {
+        position: fixed;
+        left: 0;
+        top: 0;
+        height: 100vh;
+        transform: translateX(-100%);
+        z-index: 50;
+        box-shadow: 8px 0 32px rgba(0,0,0,0.6);
+      }
+
+      #channels.open { transform: translateX(0); }
+
+      #channels-toggle, #channels-overlay { display: flex; }
+
+      #access h1, #username-prompt h1 { font-size: 2.8rem; }
+
+      #messages { padding: 20px 16px; }
+
+      .message-group { max-width: 85%; }
+
+      #input-area { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="access">
+    <h1>Top Secret Vault</h1>
+    <p>Enter the master key to access encrypted communications</p>
+    <input type="password" id="secret-code" placeholder="Master Key">
+    <button class="primary" id="enter-btn">Unlock Vault</button>
+    <p id="error"></p>
+  </div>
+
+  <div id="username-prompt" class="hidden">
+    <h1>Welcome, Agent</h1>
+    <p>Choose your operational codename</p>
+    <input type="text" id="username-input" placeholder="Codename">
+    <button class="primary" id="set-username-btn">Enter Vault</button>
+  </div>
+
+  <div id="app" class="hidden">
+    <div id="app-header">
+      <button id="channels-toggle">☰</button>
+      <div style="flex:1; text-align:center; margin-right:48px;">Encrypted Vault</div>
+    </div>
+    <div id="channels-overlay" class="hidden"></div>
+    <div id="main">
+      <div id="channels">
+        <h3>Channels</h3>
+        <ul id="channel-list"></ul>
+        <div id="new-channel-area">
+          <input id="new-channel" placeholder="new-channel">
+          <button id="create-channel">+</button>
+        </div>
+      </div>
+      <div id="chat">
+        <div id="chat-header"><span id="current-channel">general</span></div>
+        <div id="messages"></div>
+        <div id="input-area">
+          <button id="file-btn">📎</button>
+          <textarea id="message-input" placeholder="Type a message..."></textarea>
+          <button id="send-btn">➤</button>
+          <input type="file" id="file-input" style="display:none;" multiple accept="image/*,video/*,audio/*">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+    const SUPABASE_URL = 'https://gxvkhsesvdmhmqhuuqpr.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd4dmtoc2VzdmRtaG1xaHV1cXByIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcyMjI0NDUsImV4cCI6MjA4Mjc5ODQ0NX0.5q6ZoLK3Wa1KWgojC-LR1FkDYpA_zC3TvPtF-mIZuoA';
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const SECRET_HASH = 'd1376309bac13683948d7b8e048d183eedc402cdd36c5c6d7b625b4ceb680ce9';
+
+    let currentChannel = 'general';
+    let messagesSub = null;
+    let username = localStorage.getItem('chat_username') || '';
+    let lastSender = null;
+
+    const accessDiv = document.getElementById('access');
+    const usernamePrompt = document.getElementById('username-prompt');
+    const appDiv = document.getElementById('app');
+    const errorP = document.getElementById('error');
+    const messagesDiv = document.getElementById('messages');
+    const channelTitle = document.getElementById('current-channel');
+    const channelList = document.getElementById('channel-list');
+    const input = document.getElementById('message-input');
+
+    // Mobile sidebar
+    document.getElementById('channels-toggle').addEventListener('click', () => {
+      document.getElementById('channels').classList.add('open');
+      document.getElementById('channels-overlay').classList.remove('hidden');
+    });
+
+    document.getElementById('channels-overlay').addEventListener('click', () => {
+      document.getElementById('channels').classList.remove('open');
+      document.getElementById('channels-overlay').classList.add('hidden');
+    });
+
+    function stringToColor(str) {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+      const hue = Math.abs(hash) % 360;
+      return `hsl(${hue}, 70%, 60%)`;
+    }
+
+    function loadChannels() {
+      const saved = localStorage.getItem('secret_channels');
+      return saved ? JSON.parse(saved) : ['general'];
+    }
+
+    function saveChannels(channels) {
+      localStorage.setItem('secret_channels', JSON.stringify(channels));
+    }
+
+    function renderChannels(channels) {
+      channelList.innerHTML = '';
+      channels.forEach(ch => {
+        const li = document.createElement('li');
+        li.textContent = ch;
+        li.onclick = () => {
+          switchChannel(ch);
+          if (window.innerWidth <= 768) {
+            document.getElementById('channels').classList.remove('open');
+            document.getElementById('channels-overlay').classList.add('hidden');
+          }
+        };
+        if (ch === currentChannel) li.classList.add('active');
+        channelList.appendChild(li);
+      });
+    }
+
+    function loadCachedMessages(channel) {
+      try {
+        const raw = localStorage.getItem(`messages_${channel}`);
+        return raw ? JSON.parse(raw) : [];
+      } catch { return []; }
+    }
+
+    function saveCachedMessages(channel, msgs) {
+      try {
+        localStorage.setItem(`messages_${channel}`, JSON.stringify(msgs.slice(-200))); // keep last 200
+      } catch {}
+    }
+
+    async function loadHistory(channel) {
+      messagesDiv.innerHTML = '';
+      lastSender = null;
+
+      const cached = loadCachedMessages(channel);
+      cached.forEach(renderMessageFromDB);
+
+      const { data } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('channel', channel)
+        .order('created_at', { ascending: true });
+
+      if (data) {
+        messagesDiv.innerHTML = '';
+        lastSender = null;
+        data.forEach(renderMessageFromDB);
+        saveCachedMessages(channel, data);
+      }
+
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function renderMessageFromDB(row) {
+      const isOwn = row.user_name === username;
+      const sameAsLast = lastSender === row.user_name && !isOwn;
+
+      const group = document.createElement('div');
+      group.className = `message-group ${isOwn ? 'own' : ''}`;
+
+      if (!isOwn && !sameAsLast) {
+        const sender = document.createElement('div');
+        sender.className = 'sender';
+        sender.textContent = row.user_name;
+        sender.style.color = stringToColor(row.user_name);
+        group.appendChild(sender);
+      }
+
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+
+      if (row.type === 'text') {
+        bubble.textContent = row.content;
+      } else if (row.media_url) {
+        let media;
+        if (row.type === 'image') {
+          media = document.createElement('img');
+          media.src = row.media_url;
+        } else if (row.type === 'video') {
+          media = document.createElement('video');
+          media.controls = true;
+          media.src = row.media_url;
+        } else {
+          media = document.createElement('a');
+          media.href = row.media_url;
+          media.target = '_blank';
+          media.textContent = row.media_name || 'File';
+          media.style.color = 'var(--accent-primary)';
+        }
+        media.className = 'media';
+        bubble.appendChild(media);
+      }
+
+      const time = document.createElement('div');
+      time.className = 'time';
+      time.textContent = new Date(row.created_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+
+      bubble.appendChild(time);
+      group.appendChild(bubble);
+      messagesDiv.appendChild(group);
+
+      lastSender = row.user_name;
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    async function switchChannel(ch) {
+      if (messagesSub) messagesSub.unsubscribe();
+      currentChannel = ch;
+      channelTitle.textContent = ch;
+      document.querySelectorAll('#channel-list li').forEach(li => li.classList.remove('active'));
+      const activeLi = [...channelList.children].find(li => li.textContent === ch);
+      if (activeLi) activeLi.classList.add('active');
+
+      await loadHistory(ch);
+      input.placeholder = `Message #${ch}`;
+
+      messagesSub = supabase.channel('public')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel=eq.${ch}` }, payload => {
+          renderMessageFromDB(payload.new);
+        })
+        .subscribe();
+    }
+
+    async function sendText(text) {
+      if (!text.trim()) return;
+      const { error } = await supabase.from('messages').insert({
+        channel: currentChannel,
+        user_name: username,
+        content: text.trim(),
+        type: 'text'
+      });
+      if (error) console.error(error);
+      input.value = '';
+      input.style.height = 'auto';
+    }
+
+    async function uploadAndSend(file) {
+      const ext = file.name.split('.').pop();
+      const path = `${currentChannel}/${crypto.randomUUID()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('chat-media').upload(path, file);
+      if (upErr) { alert('Upload failed'); return; }
+
+      const { data: { publicUrl } } = supabase.storage.from('chat-media').getPublicUrl(path);
+      const type = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'file';
+
+      const { error } = await supabase.from('messages').insert({
+        channel: currentChannel,
+        user_name: username,
+        type,
+        media_url: publicUrl,
+        media_name: file.name
+      });
+      if (error) console.error(error);
+    }
+
+    // Auth flow
+    document.getElementById('enter-btn').onclick = async () => {
+      const code = document.getElementById('secret-code').value;
+      const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code))))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+      if (hash === SECRET_HASH) {
+        accessDiv.classList.add('hidden');
+        if (username) {
+          appDiv.classList.remove('hidden');
+          renderChannels(loadChannels());
+          switchChannel('general');
+        } else {
+          usernamePrompt.classList.remove('hidden');
+        }
+      } else {
+        errorP.textContent = 'Access Denied – Invalid Key';
+      }
+    };
+
+    document.getElementById('set-username-btn').onclick = () => {
+      const name = document.getElementById('username-input').value.trim();
+      if (name) {
+        username = name;
+        localStorage.setItem('chat_username', username);
+        usernamePrompt.classList.add('hidden');
+        appDiv.classList.remove('hidden');
+        renderChannels(loadChannels());
+        switchChannel('general');
+      }
+    };
+
+    document.getElementById('create-channel').onclick = () => {
+      let name = document.getElementById('new-channel').value.trim().toLowerCase().replace(/\s+/g, '-');
+      if (name && !loadChannels().includes(name)) {
+        const channels = [...loadChannels(), name];
+        saveChannels(channels);
+        renderChannels(channels);
+        switchChannel(name);
+        document.getElementById('new-channel').value = '';
+      }
+    };
+
+    document.getElementById('send-btn').onclick = () => sendText(input.value);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendText(input.value);
+      }
+    });
+
+    // Auto-resize textarea
+    input.addEventListener('input', () => {
+      input.style.height = 'auto';
+      input.style.height = input.scrollHeight + 'px';
+    });
+
+    document.getElementById('file-btn').onclick = () => document.getElementById('file-input').click();
+    document.getElementById('file-input').onchange = e => {
+      [...e.target.files].forEach(uploadAndSend);
+      e.target.value = '';
+    };
+  </script>
+</body>
+</html>
